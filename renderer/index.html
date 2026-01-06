@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartEdu 控制台</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <p class="eyebrow">SmartEdu Runner</p>
+        <h1>运行控制台</h1>
+        <p class="subtitle">配置参数、查看日志、导出技术支持包。</p>
+      </div>
+      <div class="status" id="statusBadge">空闲</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel config-panel">
+        <div class="panel-header">
+          <h2>配置</h2>
+          <p>所有字段会映射为运行时环境变量。</p>
+        </div>
+
+        <table class="config-table">
+          <tbody>
+            <tr>
+              <th>OpenRouter API Key</th>
+              <td>
+                <div class="input-inline">
+                  <input id="apiKey" type="password" placeholder="sk-or-v1-..." />
+                  <button class="ghost" id="toggleKey" type="button">显示</button>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <th>模型</th>
+              <td><input id="model" type="text" value="openai/gpt-5.1-codex" /></td>
+            </tr>
+            <tr>
+              <th>代理</th>
+              <td><input id="proxy" type="text" value="http://localhost:8080" /></td>
+            </tr>
+            <tr>
+              <th>登录页 URL</th>
+              <td><input id="startUrl" type="text" value="https://auth.smartedu.cn/uias/login" /></td>
+            </tr>
+            <tr>
+              <th>Chrome 路径</th>
+              <td><input id="chromePath" type="text" value="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" /></td>
+            </tr>
+            <tr>
+              <th>课程页 URL</th>
+              <td><input id="courseUrl" type="text" value="https://basic.smartedu.cn/teacherTraining/courseDetail?courseId=cb134d8b-ebe5-4953-8c2c-10d27b45b8dc&tag=2025%E5%B9%B4%E2%80%9C%E6%9A%91%E6%9C%9F%E6%95%99%E5%B8%88%E7%A0%94%E4%BF%AE%E2%80%9D%E4%B8%93%E9%A2%98&channelId=&libraryId=bb042e69-9a11-49a1-af22-0c3fab2e92b9&breadcrumb=2025%E5%B9%B4%E2%80%9C%E6%9A%91%E6%9C%9F%E6%95%99%E5%B8%88%E7%A0%94%E4%BF%AE%E2%80%9D%E4%B8%93%E9%A2%98&resourceId=d2bdf509-3049-4487-a985-eed857ca003a" /></td>
+            </tr>
+            <tr>
+              <th>播放倍速</th>
+              <td><input id="playbackRate" type="number" min="1" max="2" step="0.25" value="2" /></td>
+            </tr>
+            <tr>
+              <th>进度轮询间隔 (ms)</th>
+              <td><input id="pollInterval" type="number" min="1000" step="1000" value="10000" /></td>
+            </tr>
+            <tr>
+              <th>隐藏自动化提示</th>
+              <td><label class="switch"><input id="hideAutomation" type="checkbox" /><span></span></label></td>
+            </tr>
+            <tr>
+              <th>无头模式</th>
+              <td><label class="switch"><input id="headless" type="checkbox" /><span></span></label></td>
+            </tr>
+            <tr>
+              <th>导出 LLM 候选</th>
+              <td><label class="switch"><input id="dumpCandidates" type="checkbox" /><span></span></label></td>
+            </tr>
+            <tr>
+              <th>出错时导出</th>
+              <td><label class="switch"><input id="dumpOnError" type="checkbox" checked /><span></span></label></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="actions">
+          <button id="startBtn" class="primary">开始运行</button>
+          <button id="stopBtn" class="secondary" disabled>停止</button>
+          <button id="continueBtn" class="ghost" disabled>登录后继续</button>
+          <button id="exportBtn" class="ghost">导出支持包</button>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-header">
+          <h2>实时日志</h2>
+          <div class="log-actions">
+            <button id="clearLogs" class="ghost" type="button">清空</button>
+          </div>
+        </div>
+        <div class="log-output" id="logOutput"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
