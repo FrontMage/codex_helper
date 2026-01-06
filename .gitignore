@@ -1,0 +1,14 @@
+node_modules/
+logs/
+recordings/
+sessions/
+.DS_Store
+.env
+*.log
+*.zip
+*.app
+*.dmg
+*.exe
+*.msi
+*.nsis
+npminstall-debug.log
