@@ -1,13 +1,7 @@
 import puppeteer from 'puppeteer-core';
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { fetch } from 'undici';
 import { callOpenRouter, extractJson } from './llm.js';
-
-const execFileAsync = promisify(execFile);
 
 function logLine(log, message) {
   if (log) log(message);
@@ -57,66 +51,13 @@ function extractApplyLink(html) {
   return '';
 }
 
-async function waitForDebugPort(port) {
-  const url = `http://127.0.0.1:${port}/json/version`;
-  const startedAt = Date.now();
-  const timeoutMs = 20000;
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return true;
-    } catch {
-      // retry
-    }
-    await sleep(300);
-  }
-  throw new Error(`Chrome debug port ${port} not ready`);
-}
-
 function normalizeHttpProxy(value) {
   if (!value) return '';
   if (value.startsWith('http://') || value.startsWith('https://')) return value;
   return `http://${value}`;
 }
 
-async function launchChromeViaOpen({ port, userDataDir, httpProxy, noSandbox }, log) {
-  const args = [
-    '--remote-debugging-port=' + port,
-    `--user-data-dir=${userDataDir}`,
-    '--no-first-run',
-    '--no-default-browser-check'
-  ];
-  if (noSandbox) args.push('--no-sandbox');
-  if (httpProxy) {
-    const proxyValue = normalizeHttpProxy(httpProxy);
-    args.push(`--proxy-server=${proxyValue}`);
-  }
-
-  logLine(log, `launch chrome via open: port=${port}`);
-  await execFileAsync('open', ['-na', 'Google Chrome', '--args', ...args]);
-  await waitForDebugPort(port);
-}
-
-async function closeChromeByPort(port, log) {
-  try {
-    const { stdout } = await execFileAsync('lsof', [
-      '-iTCP:' + port,
-      '-sTCP:LISTEN',
-      '-n',
-      '-P',
-      '-t'
-    ]);
-    const pid = stdout.trim();
-    if (pid) {
-      await execFileAsync('kill', [pid]);
-      logLine(log, `closed chrome pid=${pid}`);
-    }
-  } catch (err) {
-    logLine(log, `failed to close chrome on port ${port}: ${err.message}`);
-  }
-}
-
-async function launchChromeHeadless({
+async function launchChrome({
   chromePath,
   userDataDir,
   httpProxy,
@@ -143,30 +84,6 @@ async function launchChromeHeadless({
     userDataDir,
     args
   });
-}
-
-async function closeChromeByUserDataDir(userDataDir, log) {
-  try {
-    const { stdout } = await execFileAsync('ps', ['-eo', 'pid,args']);
-    const lines = stdout.split('\n');
-    const candidates = [];
-    for (const line of lines) {
-      if (!line.includes('--user-data-dir=')) continue;
-      if (!line.includes('Google Chrome')) continue;
-      if (!line.includes(userDataDir)) continue;
-      const parts = line.trim().split(/\s+/, 2);
-      const pid = parts[0];
-      if (pid && pid !== process.pid.toString()) {
-        candidates.push(pid);
-      }
-    }
-    for (const pid of candidates) {
-      await execFileAsync('kill', [pid]);
-      logLine(log, `closed chrome pid=${pid} (user-data-dir match)`);
-    }
-  } catch (err) {
-    logLine(log, `failed to close chrome by user-data-dir: ${err.message}`);
-  }
 }
 
 function trimHtml(html, maxLen = 120000) {
@@ -294,15 +211,12 @@ export async function runCrawl(config, log, { signal } = {}) {
   const dataDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'data');
   fs.mkdirSync(dataDir, { recursive: true });
   const outputPath = path.join(dataDir, 'jobs.jsonl');
-  const debugPort = String(config.debugPort || '9222');
   const maxPages = Number.parseInt(config.maxPages || '0', 10);
   const maxJobs = Number.parseInt(config.maxJobs || '0', 10);
   const navTimeoutMs = Number.parseInt(config.navTimeoutMs || '90000', 10);
   const maxNavRetries = Number.parseInt(config.maxNavRetries || '2', 10);
 
   let browser;
-  let startedByScript = false;
-  let launchedHeadless = false;
   const userDataDir = config.userDataDir || path.join(dataDir, 'chrome-profile');
 
   try {
@@ -312,33 +226,17 @@ export async function runCrawl(config, log, { signal } = {}) {
     } else {
       const shouldHeadless =
         config.headless === true || config.headless === '1' || config.headless === 1;
-      if (shouldHeadless) {
-        try {
-          browser = await launchChromeHeadless({
-            chromePath: config.chromePath || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            userDataDir,
-            httpProxy: config.httpProxy || '',
-            noSandbox: config.noSandbox !== false,
-            headless: true
-          });
-          launchedHeadless = true;
-          logLine(log, 'launched headless chrome (isolated).');
-        } catch (err) {
-          logLine(log, `headless launch failed: ${err.message}`);
-          throw err;
-        }
-      }
-
-      if (!browser) {
-        await launchChromeViaOpen({
-          port: debugPort,
-          userDataDir,
-          httpProxy: config.httpProxy || '',
-          noSandbox: config.noSandbox !== false
-        }, log);
-        startedByScript = true;
-        browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
-      }
+      browser = await launchChrome({
+        chromePath: config.chromePath || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        userDataDir,
+        httpProxy: config.httpProxy || '',
+        noSandbox: config.noSandbox !== false,
+        headless: shouldHeadless
+      });
+      logLine(
+        log,
+        `launched chrome (${shouldHeadless ? 'headless' : 'headful'}) via puppeteer.`
+      );
     }
 
     const page = await browser.newPage();
@@ -488,14 +386,8 @@ export async function runCrawl(config, log, { signal } = {}) {
     if (browser) {
       if (config.browserUrl) {
         await browser.disconnect();
-      } else if (launchedHeadless) {
-        await browser.close();
       } else {
         await browser.close();
-        if (startedByScript) {
-          await closeChromeByPort(debugPort, log);
-          await closeChromeByUserDataDir(userDataDir, log);
-        }
       }
     }
   }
