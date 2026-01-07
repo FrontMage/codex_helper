@@ -116,6 +116,30 @@ async function closeChromeByPort(port, log) {
   }
 }
 
+async function closeChromeByUserDataDir(userDataDir, log) {
+  try {
+    const { stdout } = await execFileAsync('ps', ['-eo', 'pid,args']);
+    const lines = stdout.split('\n');
+    const candidates = [];
+    for (const line of lines) {
+      if (!line.includes('--user-data-dir=')) continue;
+      if (!line.includes('Google Chrome')) continue;
+      if (!line.includes(userDataDir)) continue;
+      const parts = line.trim().split(/\s+/, 2);
+      const pid = parts[0];
+      if (pid && pid !== process.pid.toString()) {
+        candidates.push(pid);
+      }
+    }
+    for (const pid of candidates) {
+      await execFileAsync('kill', [pid]);
+      logLine(log, `closed chrome pid=${pid} (user-data-dir match)`);
+    }
+  } catch (err) {
+    logLine(log, `failed to close chrome by user-data-dir: ${err.message}`);
+  }
+}
+
 function trimHtml(html, maxLen = 120000) {
   const cleaned = html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -217,167 +241,173 @@ export async function runCrawl(config, log, { signal } = {}) {
 
   let browser;
   let startedByScript = false;
+  const userDataDir = config.userDataDir || path.join(dataDir, 'chrome-profile');
 
-  if (config.browserUrl) {
-    logLine(log, `connect to existing chrome: ${config.browserUrl}`);
-    browser = await puppeteer.connect({ browserURL: config.browserUrl });
-  } else {
-    await launchChromeViaOpen({
-      port: debugPort,
-      userDataDir: config.userDataDir || path.join(dataDir, 'chrome-profile'),
-      httpProxy: config.httpProxy || '',
-      noSandbox: config.noSandbox !== false
-    }, log);
-    startedByScript = true;
-    browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
-  }
-
-  const page = await browser.newPage();
-  page.setDefaultTimeout(60000);
-  page.setDefaultNavigationTimeout(navTimeoutMs);
-
-  logLine(log, `open ${config.startUrl}`);
-  const startOk = await gotoWithRetry(page, config.startUrl, {
-    waitUntil: 'domcontentloaded',
-    timeoutMs: navTimeoutMs,
-    retries: maxNavRetries,
-    log
-  });
-  if (!startOk) throw new Error('Failed to load start URL.');
-  const firstHtml = await page.content();
-  const totalPages = parsePageCount(firstHtml);
-  const pageLimit = maxPages > 0 ? Math.min(maxPages, totalPages) : totalPages;
-  logLine(log, `pages=${totalPages}, scan=${pageLimit}`);
-
-  const jobUrls = new Map();
-  for (let p = 1; p <= pageLimit; p += 1) {
-    if (signal?.aborted) throw new Error('Cancelled');
-    const url = p === 1 ? config.startUrl : `${config.startUrl.replace(/\/$/, '')}?page=${p}`;
-    logLine(log, `scan page ${p}: ${url}`);
-    if (p > 1) {
-      const ok = await gotoWithRetry(page, url, {
-        waitUntil: 'domcontentloaded',
-        timeoutMs: navTimeoutMs,
-        retries: maxNavRetries,
-        log
-      });
-      if (!ok) {
-        logLine(log, `skip page ${p} due to navigation failure.`);
-        continue;
-      }
+  try {
+    if (config.browserUrl) {
+      logLine(log, `connect to existing chrome: ${config.browserUrl}`);
+      browser = await puppeteer.connect({ browserURL: config.browserUrl });
+    } else {
+      await launchChromeViaOpen({
+        port: debugPort,
+        userDataDir,
+        httpProxy: config.httpProxy || '',
+        noSandbox: config.noSandbox !== false
+      }, log);
+      startedByScript = true;
+      browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
     }
-    await sleep(1200);
-    const items = await extractJobsFromPage(page);
-    for (const item of items) {
-      const full = normalizeUrl(item.href);
-      if (!jobUrls.has(full)) jobUrls.set(full, item);
-    }
-    logLine(log, `page ${p} found ${items.length} job links`);
-  }
 
-  const allJobs = Array.from(jobUrls.entries());
-  logLine(log, `unique jobs=${allJobs.length}`);
+    const page = await browser.newPage();
+    page.setDefaultTimeout(60000);
+    page.setDefaultNavigationTimeout(navTimeoutMs);
 
-  let processed = 0;
-  for (const [jobUrl, item] of allJobs) {
-    if (signal?.aborted) throw new Error('Cancelled');
-    if (maxJobs > 0 && processed >= maxJobs) break;
-    processed += 1;
-
-    logLine(log, `[${processed}/${maxJobs || allJobs.length}] job: ${item.title || 'untitled'}`);
-    const jobOk = await gotoWithRetry(page, jobUrl, {
+    logLine(log, `open ${config.startUrl}`);
+    const startOk = await gotoWithRetry(page, config.startUrl, {
       waitUntil: 'domcontentloaded',
       timeoutMs: navTimeoutMs,
       retries: maxNavRetries,
       log
     });
-    if (!jobOk) {
-      logLine(log, `skip job due to navigation failure: ${jobUrl}`);
-      continue;
-    }
-    const jobHtml = await page.content();
-    const applyUrl = await extractApplyFromJobPage(page) || extractApplyLink(jobHtml);
+    if (!startOk) throw new Error('Failed to load start URL.');
+    const firstHtml = await page.content();
+    const totalPages = parsePageCount(firstHtml);
+    const pageLimit = maxPages > 0 ? Math.min(maxPages, totalPages) : totalPages;
+    logLine(log, `pages=${totalPages}, scan=${pageLimit}`);
 
-    if (!applyUrl) {
-      const record = {
-        jobUrl,
-        title: item.title || '',
-        company: item.company || '',
-        applyUrl: '',
-        isClosed: null,
-        reason: 'apply link not found'
-      };
-      fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
-      logLine(log, `apply link missing: ${jobUrl}`);
-      continue;
+    const jobUrls = new Map();
+    for (let p = 1; p <= pageLimit; p += 1) {
+      if (signal?.aborted) throw new Error('Cancelled');
+      const url = p === 1 ? config.startUrl : `${config.startUrl.replace(/\/$/, '')}?page=${p}`;
+      logLine(log, `scan page ${p}: ${url}`);
+      if (p > 1) {
+        const ok = await gotoWithRetry(page, url, {
+          waitUntil: 'domcontentloaded',
+          timeoutMs: navTimeoutMs,
+          retries: maxNavRetries,
+          log
+        });
+        if (!ok) {
+          logLine(log, `skip page ${p} due to navigation failure.`);
+          continue;
+        }
+      }
+      await sleep(1200);
+      const items = await extractJobsFromPage(page);
+      for (const item of items) {
+        const full = normalizeUrl(item.href);
+        if (!jobUrls.has(full)) jobUrls.set(full, item);
+      }
+      logLine(log, `page ${p} found ${items.length} job links`);
     }
 
-    const applyPage = await browser.newPage();
-    try {
-      const applyOk = await gotoWithRetry(applyPage, applyUrl, {
+    const allJobs = Array.from(jobUrls.entries());
+    logLine(log, `unique jobs=${allJobs.length}`);
+
+    let processed = 0;
+    for (const [jobUrl, item] of allJobs) {
+      if (signal?.aborted) throw new Error('Cancelled');
+      if (maxJobs > 0 && processed >= maxJobs) break;
+      processed += 1;
+
+      logLine(log, `[${processed}/${maxJobs || allJobs.length}] job: ${item.title || 'untitled'}`);
+      const jobOk = await gotoWithRetry(page, jobUrl, {
         waitUntil: 'domcontentloaded',
         timeoutMs: navTimeoutMs,
         retries: maxNavRetries,
         log
       });
-      if (!applyOk) {
+      if (!jobOk) {
+        logLine(log, `skip job due to navigation failure: ${jobUrl}`);
+        continue;
+      }
+      const jobHtml = await page.content();
+      const applyUrl = await extractApplyFromJobPage(page) || extractApplyLink(jobHtml);
+
+      if (!applyUrl) {
         const record = {
           jobUrl,
           title: item.title || '',
           company: item.company || '',
-          applyUrl,
+          applyUrl: '',
           isClosed: null,
-          reason: 'apply page navigation failed'
+          reason: 'apply link not found'
         };
         fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
-        logLine(log, `apply page failed: ${applyUrl}`);
+        logLine(log, `apply link missing: ${jobUrl}`);
         continue;
       }
-      const applyHtml = await applyPage.content();
-      const trimmed = trimHtml(applyHtml);
 
-      let extracted = null;
+      const applyPage = await browser.newPage();
       try {
-        extracted = await callExtractLLM({
-          apiKey: config.apiKey,
-          model: config.model,
-          llmProxy: config.llmProxy || '',
-          jobUrl,
-          applyUrl,
-          html: trimmed
+        const applyOk = await gotoWithRetry(applyPage, applyUrl, {
+          waitUntil: 'domcontentloaded',
+          timeoutMs: navTimeoutMs,
+          retries: maxNavRetries,
+          log
         });
-      } catch (err) {
-        logLine(log, `LLM extract failed: ${err.message}`);
+        if (!applyOk) {
+          const record = {
+            jobUrl,
+            title: item.title || '',
+            company: item.company || '',
+            applyUrl,
+            isClosed: null,
+            reason: 'apply page navigation failed'
+          };
+          fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
+          logLine(log, `apply page failed: ${applyUrl}`);
+          continue;
+        }
+        const applyHtml = await applyPage.content();
+        const trimmed = trimHtml(applyHtml);
+
+        let extracted = null;
+        try {
+          extracted = await callExtractLLM({
+            apiKey: config.apiKey,
+            model: config.model,
+            llmProxy: config.llmProxy || '',
+            jobUrl,
+            applyUrl,
+            html: trimmed
+          });
+        } catch (err) {
+          logLine(log, `LLM extract failed: ${err.message}`);
+        }
+
+        const record = {
+          jobUrl,
+          title: extracted?.title || item.title || '',
+          company: extracted?.company || item.company || '',
+          applyUrl,
+          location: extracted?.location || '',
+          summary: extracted?.summary || '',
+          responsibilities: extracted?.responsibilities || [],
+          requirements: extracted?.requirements || [],
+          benefits: extracted?.benefits || [],
+          isClosed: extracted?.isClosed ?? null,
+          closedReason: extracted?.closedReason || ''
+        };
+        fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
+        logLine(log, `saved: ${record.title || 'untitled'}`);
+      } finally {
+        await applyPage.close();
       }
+    }
 
-      const record = {
-        jobUrl,
-        title: extracted?.title || item.title || '',
-        company: extracted?.company || item.company || '',
-        applyUrl,
-        location: extracted?.location || '',
-        summary: extracted?.summary || '',
-        responsibilities: extracted?.responsibilities || [],
-        requirements: extracted?.requirements || [],
-        benefits: extracted?.benefits || [],
-        isClosed: extracted?.isClosed ?? null,
-        closedReason: extracted?.closedReason || ''
-      };
-      fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
-      logLine(log, `saved: ${record.title || 'untitled'}`);
-    } finally {
-      await applyPage.close();
+    return outputPath;
+  } finally {
+    if (browser) {
+      if (config.browserUrl) {
+        await browser.disconnect();
+      } else {
+        await browser.close();
+        if (startedByScript) {
+          await closeChromeByPort(debugPort, log);
+          await closeChromeByUserDataDir(userDataDir, log);
+        }
+      }
     }
   }
-
-  if (config.browserUrl) {
-    await browser.disconnect();
-  } else {
-    await browser.close();
-    if (startedByScript) {
-      await closeChromeByPort(debugPort, log);
-    }
-  }
-
-  return outputPath;
 }
