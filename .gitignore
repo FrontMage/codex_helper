@@ -12,3 +12,6 @@ sessions/
 *.msi
 *.nsis
 npminstall-debug.log
+.beads/.gitignore
+.beads/README.md
+.beads/config.yaml
