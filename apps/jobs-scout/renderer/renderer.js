@@ -13,7 +13,7 @@ const chatSendBtn = document.getElementById('chatSendBtn');
 const fields = {
   apiKey: document.getElementById('apiKey'),
   model: document.getElementById('model'),
-  socksProxy: document.getElementById('socksProxy'),
+  chromeProxy: document.getElementById('chromeProxy'),
   llmProxy: document.getElementById('llmProxy'),
   chromePath: document.getElementById('chromePath'),
   maxPages: document.getElementById('maxPages'),
@@ -42,7 +42,7 @@ startBtn.addEventListener('click', () => {
   window.jobsApi.startRun({
     apiKey: fields.apiKey.value,
     model: fields.model.value,
-    socksProxy: fields.socksProxy.value,
+    chromeProxy: fields.chromeProxy.value,
     llmProxy: fields.llmProxy.value,
     chromePath: fields.chromePath.value,
     maxPages: fields.maxPages.value,

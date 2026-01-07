@@ -13,7 +13,7 @@ const SAMPLE_COUNT = Number.parseInt(process.env.SAMPLE_COUNT || '5', 10);
 const CHROME_PATH = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const USER_DATA_DIR =
   process.env.CHROME_USER_DATA_DIR || path.join(os.homedir(), '.chrome-jobs-scout');
-const SOCKS5_PROXY = process.env.CHROME_SOCKS5_PROXY || '';
+const CHROME_PROXY = process.env.CHROME_HTTP_PROXY || process.env.CHROME_PROXY || '';
 const HEADLESS = process.env.HEADLESS !== '0';
 const NO_SANDBOX = process.env.NO_SANDBOX !== '0';
 const BROWSER_URL = process.env.BROWSER_URL || '';
@@ -51,6 +51,12 @@ async function waitForDebugPort(port) {
   throw new Error(`Chrome debug port ${port} not ready`);
 }
 
+function normalizeHttpProxy(value) {
+  if (!value) return '';
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  return `http://${value}`;
+}
+
 async function launchChromeViaOpen(port) {
   const args = [
     '--remote-debugging-port=' + port,
@@ -59,10 +65,8 @@ async function launchChromeViaOpen(port) {
     '--no-default-browser-check'
   ];
   if (NO_SANDBOX) args.push('--no-sandbox');
-  if (SOCKS5_PROXY) {
-    const proxyValue = SOCKS5_PROXY.startsWith('socks5://')
-      ? SOCKS5_PROXY
-      : `socks5://${SOCKS5_PROXY}`;
+  if (CHROME_PROXY) {
+    const proxyValue = normalizeHttpProxy(CHROME_PROXY);
     args.push(`--proxy-server=${proxyValue}`);
   }
 
@@ -138,10 +142,8 @@ async function main() {
     } else {
       const args = [];
       if (NO_SANDBOX) args.push('--no-sandbox');
-      if (SOCKS5_PROXY) {
-        const proxyValue = SOCKS5_PROXY.startsWith('socks5://')
-          ? SOCKS5_PROXY
-          : `socks5://${SOCKS5_PROXY}`;
+      if (CHROME_PROXY) {
+        const proxyValue = normalizeHttpProxy(CHROME_PROXY);
         args.push(`--proxy-server=${proxyValue}`);
       }
 

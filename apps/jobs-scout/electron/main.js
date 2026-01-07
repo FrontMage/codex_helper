@@ -55,7 +55,7 @@ ipcMain.on('start-run', (_event, config) => {
       startUrl: 'https://jobs.letsgetrusty.com/',
       apiKey: config.apiKey,
       model: config.model || 'openai/gpt-5.1-codex',
-      socks5Proxy: config.socksProxy,
+      httpProxy: config.chromeProxy,
       llmProxy: config.llmProxy,
       chromePath: config.chromePath,
       maxPages: config.maxPages,

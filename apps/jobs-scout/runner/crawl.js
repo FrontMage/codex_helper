@@ -59,7 +59,13 @@ async function waitForDebugPort(port) {
   throw new Error(`Chrome debug port ${port} not ready`);
 }
 
-async function launchChromeViaOpen({ port, userDataDir, socks5Proxy, noSandbox }, log) {
+function normalizeHttpProxy(value) {
+  if (!value) return '';
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  return `http://${value}`;
+}
+
+async function launchChromeViaOpen({ port, userDataDir, httpProxy, noSandbox }, log) {
   const args = [
     '--remote-debugging-port=' + port,
     `--user-data-dir=${userDataDir}`,
@@ -67,10 +73,8 @@ async function launchChromeViaOpen({ port, userDataDir, socks5Proxy, noSandbox }
     '--no-default-browser-check'
   ];
   if (noSandbox) args.push('--no-sandbox');
-  if (socks5Proxy) {
-    const proxyValue = socks5Proxy.startsWith('socks5://')
-      ? socks5Proxy
-      : `socks5://${socks5Proxy}`;
+  if (httpProxy) {
+    const proxyValue = normalizeHttpProxy(httpProxy);
     args.push(`--proxy-server=${proxyValue}`);
   }
 
@@ -205,7 +209,7 @@ export async function runCrawl(config, log, { signal } = {}) {
     await launchChromeViaOpen({
       port: debugPort,
       userDataDir: config.userDataDir || path.join(dataDir, 'chrome-profile'),
-      socks5Proxy: config.socks5Proxy || '',
+      httpProxy: config.httpProxy || '',
       noSandbox: config.noSandbox !== false
     }, log);
     startedByScript = true;
