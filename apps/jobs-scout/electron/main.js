@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { runCrawl } from '../runner/crawl.js';
+import { loadJobs, loadResume, recommendJobs } from '../runner/recommend.js';
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const rendererPath = path.join(ROOT_DIR, 'renderer', 'index.html');
@@ -114,4 +115,28 @@ ipcMain.handle('export-logs', async () => {
   if (result.canceled || !result.filePath) return { ok: false };
   fs.writeFileSync(result.filePath, logBuffer.join('\n'));
   return { ok: true, filePath: result.filePath };
+});
+
+ipcMain.handle('chat-send', async (_event, payload) => {
+  try {
+    const dataDir = path.join(ROOT_DIR, 'data');
+    const jobs = loadJobs(dataDir);
+    const resume = payload.resumeText?.trim() ? payload.resumeText : loadResume(dataDir);
+
+    pushLog(`Chat request: ${payload.message?.slice(0, 120) || ''}`);
+
+    const result = await recommendJobs({
+      apiKey: payload.apiKey,
+      model: payload.model || 'openai/gpt-5.1-codex',
+      llmProxy: payload.llmProxy,
+      resumeText: resume,
+      userMessage: payload.message,
+      jobs,
+      limit: Number.parseInt(payload.limit || '80', 10)
+    });
+
+    return { ok: true, result };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });

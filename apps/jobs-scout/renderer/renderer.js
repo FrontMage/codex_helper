@@ -92,5 +92,58 @@ chatSendBtn.addEventListener('click', () => {
   if (!text) return;
   appendChat('user', text);
   chatInput.value = '';
-  appendChat('assistant', '（待接入 LLM 推荐引擎）');
+  window.jobsApi
+    .chatSend({
+      apiKey: fields.apiKey.value,
+      model: fields.model.value,
+      llmProxy: fields.llmProxy.value,
+      message: text,
+      resumeText: resumeText.value
+    })
+    .then((res) => {
+      if (!res.ok) {
+        appendChat('assistant', `请求失败: ${res.error}`);
+        return;
+      }
+      const result = res.result || {};
+      const lines = [];
+      if (result.summary) {
+        lines.push(`总结: ${result.summary}`);
+      }
+      const recs = Array.isArray(result.recommendations) ? result.recommendations : [];
+      if (recs.length) {
+        lines.push(`推荐 ${recs.length} 个:`);
+        for (const rec of recs.slice(0, 8)) {
+          const score = rec.score ?? '-';
+          const title = rec.title || '未命名职位';
+          const company = rec.company || '未知公司';
+          const url = rec.applyUrl || rec.jobUrl || '';
+          lines.push(`- ${title} | ${company} | 分数 ${score} | ${url}`);
+        }
+      } else {
+        lines.push('没有匹配的岗位。');
+      }
+      const excluded = Array.isArray(result.excluded) ? result.excluded : [];
+      if (excluded.length) {
+        lines.push(`排除 ${excluded.length} 个（示例）:`);
+        for (const ex of excluded.slice(0, 5)) {
+          const title = ex.title || '未命名职位';
+          const reason = ex.reason || '';
+          lines.push(`- ${title} ${reason ? `(${reason})` : ''}`);
+        }
+      }
+      const need = Array.isArray(result.needsConfirmation) ? result.needsConfirmation : [];
+      if (need.length) {
+        lines.push(`需确认 ${need.length} 个（示例）:`);
+        for (const ex of need.slice(0, 5)) {
+          const title = ex.title || '未命名职位';
+          const reason = ex.reason || '';
+          lines.push(`- ${title} ${reason ? `(${reason})` : ''}`);
+        }
+      }
+      appendChat('assistant', lines.join('\n'));
+    })
+    .catch((err) => {
+      appendChat('assistant', `请求失败: ${err.message}`);
+    });
 });
