@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jobs Scout</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div>
+          <h1>Jobs Scout</h1>
+          <p>抓取 Rust 远程岗位，解析真实外链，并结合简历做匹配。</p>
+        </div>
+        <div class="actions">
+          <button id="startBtn">开始</button>
+          <button id="stopBtn" class="ghost">停止</button>
+          <button id="exportBtn" class="ghost">导出日志</button>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>配置</h2>
+          <div class="form">
+            <label>
+              API Key
+              <input id="apiKey" placeholder="sk-..." type="password" />
+            </label>
+            <label>
+              Model
+              <input id="model" placeholder="openai/gpt-5.1-codex" />
+            </label>
+            <label>
+              SOCKS5 代理
+              <input id="proxy" placeholder="127.0.0.1:1080" />
+            </label>
+            <label>
+              Chrome 路径
+              <input id="chromePath" placeholder="/Applications/Google Chrome.app/..." />
+            </label>
+            <label>
+              最大页数
+              <input id="maxPages" type="number" placeholder="0=全部" />
+            </label>
+            <label>
+              Headless
+              <select id="headless">
+                <option value="1">是</option>
+                <option value="0">否</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>日志</h2>
+          <div id="logBox" class="log"></div>
+        </div>
+
+        <div class="panel">
+          <h2>简历</h2>
+          <div class="resume">
+            <button id="pickResumeBtn">选择 Markdown 简历</button>
+            <textarea id="resumeText" placeholder="或者粘贴简历内容（Markdown）"></textarea>
+            <button id="saveResumeBtn" class="ghost">保存简历</button>
+            <div id="resumeStatus" class="status"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>聊天推荐</h2>
+          <div class="chat">
+            <div id="chatHistory" class="chat-history"></div>
+            <textarea id="chatInput" placeholder="补充你的要求或偏好，比如：只看远程、薪资范围、技术栈等"></textarea>
+            <button id="chatSendBtn">发送</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "name": "jobs-scout",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "gui": "electron electron/main.js",
+    "dist": "electron-builder --dir"
+  },
+  "dependencies": {
+    "undici": "^7.16.0",
+    "puppeteer-core": "^22.14.0"
+  },
+  "devDependencies": {
+    "electron": "^30.1.2",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.frontmage.jobsscout",
+    "productName": "Jobs Scout",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "renderer/**",
+      "runner/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": ["dir"]
+    },
+    "win": {
+      "target": ["nsis"]
+    }
+  }
+}
