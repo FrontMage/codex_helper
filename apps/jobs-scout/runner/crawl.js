@@ -135,6 +135,7 @@ async function launchChromeHeadless({
     const proxyValue = normalizeHttpProxy(httpProxy);
     args.push(`--proxy-server=${proxyValue}`);
   }
+  if (headless) args.push('--headless=new');
 
   return puppeteer.launch({
     executablePath: chromePath,
@@ -277,7 +278,8 @@ export async function runCrawl(config, log, { signal } = {}) {
       logLine(log, `connect to existing chrome: ${config.browserUrl}`);
       browser = await puppeteer.connect({ browserURL: config.browserUrl });
     } else {
-      const shouldHeadless = config.headless === true || config.headless === '1';
+      const shouldHeadless =
+        config.headless === true || config.headless === '1' || config.headless === 1;
       if (shouldHeadless) {
         try {
           browser = await launchChromeHeadless({
@@ -290,7 +292,8 @@ export async function runCrawl(config, log, { signal } = {}) {
           launchedHeadless = true;
           logLine(log, 'launched headless chrome (isolated).');
         } catch (err) {
-          logLine(log, `headless launch failed, fallback to open: ${err.message}`);
+          logLine(log, `headless launch failed: ${err.message}`);
+          throw err;
         }
       }
 
