@@ -116,6 +116,34 @@ async function closeChromeByPort(port, log) {
   }
 }
 
+async function launchChromeHeadless({
+  chromePath,
+  userDataDir,
+  httpProxy,
+  noSandbox,
+  headless
+}) {
+  const args = [
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-crash-reporter',
+    '--disable-breakpad',
+    '--disable-features=Crashpad'
+  ];
+  if (noSandbox) args.push('--no-sandbox');
+  if (httpProxy) {
+    const proxyValue = normalizeHttpProxy(httpProxy);
+    args.push(`--proxy-server=${proxyValue}`);
+  }
+
+  return puppeteer.launch({
+    executablePath: chromePath,
+    headless: headless ? 'new' : false,
+    userDataDir,
+    args
+  });
+}
+
 async function closeChromeByUserDataDir(userDataDir, log) {
   try {
     const { stdout } = await execFileAsync('ps', ['-eo', 'pid,args']);
@@ -241,6 +269,7 @@ export async function runCrawl(config, log, { signal } = {}) {
 
   let browser;
   let startedByScript = false;
+  let launchedHeadless = false;
   const userDataDir = config.userDataDir || path.join(dataDir, 'chrome-profile');
 
   try {
@@ -248,14 +277,33 @@ export async function runCrawl(config, log, { signal } = {}) {
       logLine(log, `connect to existing chrome: ${config.browserUrl}`);
       browser = await puppeteer.connect({ browserURL: config.browserUrl });
     } else {
-      await launchChromeViaOpen({
-        port: debugPort,
-        userDataDir,
-        httpProxy: config.httpProxy || '',
-        noSandbox: config.noSandbox !== false
-      }, log);
-      startedByScript = true;
-      browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
+      const shouldHeadless = config.headless === true || config.headless === '1';
+      if (shouldHeadless) {
+        try {
+          browser = await launchChromeHeadless({
+            chromePath: config.chromePath || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            userDataDir,
+            httpProxy: config.httpProxy || '',
+            noSandbox: config.noSandbox !== false,
+            headless: true
+          });
+          launchedHeadless = true;
+          logLine(log, 'launched headless chrome (isolated).');
+        } catch (err) {
+          logLine(log, `headless launch failed, fallback to open: ${err.message}`);
+        }
+      }
+
+      if (!browser) {
+        await launchChromeViaOpen({
+          port: debugPort,
+          userDataDir,
+          httpProxy: config.httpProxy || '',
+          noSandbox: config.noSandbox !== false
+        }, log);
+        startedByScript = true;
+        browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${debugPort}` });
+      }
     }
 
     const page = await browser.newPage();
@@ -401,6 +449,8 @@ export async function runCrawl(config, log, { signal } = {}) {
     if (browser) {
       if (config.browserUrl) {
         await browser.disconnect();
+      } else if (launchedHeadless) {
+        await browser.close();
       } else {
         await browser.close();
         if (startedByScript) {
