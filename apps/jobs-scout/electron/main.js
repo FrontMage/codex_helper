@@ -1,9 +1,12 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { runCrawl } from '../runner/crawl.js';
 import { loadJobs, loadResume, recommendJobs } from '../runner/recommend.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const rendererPath = path.join(ROOT_DIR, 'renderer', 'index.html');
 const logBuffer = [];
