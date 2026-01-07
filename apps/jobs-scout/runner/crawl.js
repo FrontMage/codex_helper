@@ -18,6 +18,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function gotoWithRetry(page, url, { waitUntil, timeoutMs, retries, log }) {
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil, timeout: timeoutMs });
+      return true;
+    } catch (err) {
+      logLine(log, `Navigation failed (${attempt}/${retries}) ${url}: ${err.message}`);
+      if (attempt === retries) return false;
+      await sleep(1000 * attempt);
+    }
+  }
+  return false;
+}
+
 function normalizeUrl(href) {
   if (!href) return '';
   if (href.startsWith('http://') || href.startsWith('https://')) return href;
@@ -198,6 +212,8 @@ export async function runCrawl(config, log, { signal } = {}) {
   const debugPort = String(config.debugPort || '9222');
   const maxPages = Number.parseInt(config.maxPages || '0', 10);
   const maxJobs = Number.parseInt(config.maxJobs || '0', 10);
+  const navTimeoutMs = Number.parseInt(config.navTimeoutMs || '90000', 10);
+  const maxNavRetries = Number.parseInt(config.maxNavRetries || '2', 10);
 
   let browser;
   let startedByScript = false;
@@ -218,9 +234,16 @@ export async function runCrawl(config, log, { signal } = {}) {
 
   const page = await browser.newPage();
   page.setDefaultTimeout(60000);
+  page.setDefaultNavigationTimeout(navTimeoutMs);
 
   logLine(log, `open ${config.startUrl}`);
-  await page.goto(config.startUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+  const startOk = await gotoWithRetry(page, config.startUrl, {
+    waitUntil: 'domcontentloaded',
+    timeoutMs: navTimeoutMs,
+    retries: maxNavRetries,
+    log
+  });
+  if (!startOk) throw new Error('Failed to load start URL.');
   const firstHtml = await page.content();
   const totalPages = parsePageCount(firstHtml);
   const pageLimit = maxPages > 0 ? Math.min(maxPages, totalPages) : totalPages;
@@ -232,7 +255,16 @@ export async function runCrawl(config, log, { signal } = {}) {
     const url = p === 1 ? config.startUrl : `${config.startUrl.replace(/\/$/, '')}?page=${p}`;
     logLine(log, `scan page ${p}: ${url}`);
     if (p > 1) {
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+      const ok = await gotoWithRetry(page, url, {
+        waitUntil: 'domcontentloaded',
+        timeoutMs: navTimeoutMs,
+        retries: maxNavRetries,
+        log
+      });
+      if (!ok) {
+        logLine(log, `skip page ${p} due to navigation failure.`);
+        continue;
+      }
     }
     await sleep(1200);
     const items = await extractJobsFromPage(page);
@@ -253,7 +285,16 @@ export async function runCrawl(config, log, { signal } = {}) {
     processed += 1;
 
     logLine(log, `[${processed}/${maxJobs || allJobs.length}] job: ${item.title || 'untitled'}`);
-    await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    const jobOk = await gotoWithRetry(page, jobUrl, {
+      waitUntil: 'domcontentloaded',
+      timeoutMs: navTimeoutMs,
+      retries: maxNavRetries,
+      log
+    });
+    if (!jobOk) {
+      logLine(log, `skip job due to navigation failure: ${jobUrl}`);
+      continue;
+    }
     const jobHtml = await page.content();
     const applyUrl = await extractApplyFromJobPage(page) || extractApplyLink(jobHtml);
 
@@ -273,7 +314,25 @@ export async function runCrawl(config, log, { signal } = {}) {
 
     const applyPage = await browser.newPage();
     try {
-      await applyPage.goto(applyUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      const applyOk = await gotoWithRetry(applyPage, applyUrl, {
+        waitUntil: 'domcontentloaded',
+        timeoutMs: navTimeoutMs,
+        retries: maxNavRetries,
+        log
+      });
+      if (!applyOk) {
+        const record = {
+          jobUrl,
+          title: item.title || '',
+          company: item.company || '',
+          applyUrl,
+          isClosed: null,
+          reason: 'apply page navigation failed'
+        };
+        fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
+        logLine(log, `apply page failed: ${applyUrl}`);
+        continue;
+      }
       const applyHtml = await applyPage.content();
       const trimmed = trimHtml(applyHtml);
 
