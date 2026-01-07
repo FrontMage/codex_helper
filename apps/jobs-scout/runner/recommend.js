@@ -29,13 +29,14 @@ export async function recommendJobs({
   resumeText,
   userMessage,
   jobs,
-  limit = 80
+  limit = 80,
+  onlyOpen = true
 }) {
   if (!apiKey) throw new Error('Missing API key.');
 
   const usableJobs = jobs
     .filter((job) => job.applyUrl)
-    .filter((job) => job.isClosed !== true)
+    .filter((job) => (onlyOpen ? job.isClosed !== true : true))
     .slice(0, limit)
     .map((job) => ({
       jobUrl: job.jobUrl,

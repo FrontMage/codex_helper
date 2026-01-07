@@ -132,7 +132,8 @@ ipcMain.handle('chat-send', async (_event, payload) => {
       resumeText: resume,
       userMessage: payload.message,
       jobs,
-      limit: Number.parseInt(payload.limit || '80', 10)
+      limit: Number.parseInt(payload.limit || '80', 10),
+      onlyOpen: payload.onlyOpen !== false
     });
 
     return { ok: true, result };

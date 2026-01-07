@@ -9,6 +9,7 @@ const resumeStatus = document.getElementById('resumeStatus');
 const chatHistory = document.getElementById('chatHistory');
 const chatInput = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSendBtn');
+const onlyOpenToggle = document.getElementById('onlyOpen');
 
 const fields = {
   apiKey: document.getElementById('apiKey'),
@@ -98,7 +99,8 @@ chatSendBtn.addEventListener('click', () => {
       model: fields.model.value,
       llmProxy: fields.llmProxy.value,
       message: text,
-      resumeText: resumeText.value
+      resumeText: resumeText.value,
+      onlyOpen: onlyOpenToggle.checked
     })
     .then((res) => {
       if (!res.ok) {

@@ -148,6 +148,19 @@ textarea {
   gap: 10px;
 }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+}
+
 .chat-history {
   height: 180px;
   overflow: auto;
