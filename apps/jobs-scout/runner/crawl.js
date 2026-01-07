@@ -183,9 +183,10 @@ async function extractJobsFromPage(page) {
     const results = [];
 
     const scripts = Array.from(document.querySelectorAll('script'));
+    const itemListRegex = /"@type"\s*:\s*"ItemList"/;
     for (const script of scripts) {
       const text = script.textContent || '';
-      if (!text.includes('"@type":"ItemList"')) continue;
+      if (!itemListRegex.test(text)) continue;
       try {
         const obj = JSON.parse(text);
         const entries = obj.itemListElement || [];
@@ -220,6 +221,37 @@ async function extractJobsFromPage(page) {
     }
     return results;
   });
+}
+
+async function waitForJobMarkers(page, timeoutMs, log) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const hasAnchors = Boolean(document.querySelector('a[href*="?job="]'));
+        if (hasAnchors) return true;
+        const scripts = Array.from(document.querySelectorAll('script'));
+        const itemListRegex = /"@type"\s*:\s*"ItemList"/;
+        return scripts.some((s) => itemListRegex.test(s.textContent || ''));
+      },
+      { timeout: timeoutMs }
+    );
+  } catch (err) {
+    logLine(log, `job markers not found: ${err.message}`);
+  }
+}
+
+async function logEmptyPageDebug(page, log) {
+  try {
+    const info = await page.evaluate(() => ({
+      title: document.title,
+      url: location.href,
+      text: (document.body?.innerText || '').slice(0, 240)
+    }));
+    const cleanText = info.text.replace(/\s+/g, ' ').trim();
+    logLine(log, `empty page debug: title="${info.title}" url="${info.url}" text="${cleanText}"`);
+  } catch (err) {
+    logLine(log, `empty page debug failed: ${err.message}`);
+  }
 }
 
 async function extractApplyFromJobPage(page) {
@@ -343,8 +375,12 @@ export async function runCrawl(config, log, { signal } = {}) {
           continue;
         }
       }
-      await sleep(1200);
+      await waitForJobMarkers(page, 12000, log);
+      await sleep(800);
       const items = await extractJobsFromPage(page);
+      if (!items.length) {
+        await logEmptyPageDebug(page, log);
+      }
       for (const item of items) {
         const full = normalizeUrl(item.href);
         if (!jobUrls.has(full)) jobUrls.set(full, item);
