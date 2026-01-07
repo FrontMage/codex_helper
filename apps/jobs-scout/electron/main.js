@@ -1,11 +1,13 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { runCrawl } from '../runner/crawl.js';
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const rendererPath = path.join(ROOT_DIR, 'renderer', 'index.html');
 const logBuffer = [];
 const MAX_LOG_LINES = 5000;
+let currentAbort = null;
 
 function pushLog(line) {
   const text = `[${new Date().toISOString()}] ${line}`;
@@ -39,12 +41,45 @@ app.whenReady().then(() => {
 });
 
 ipcMain.on('start-run', (_event, config) => {
+  if (currentAbort) {
+    pushLog('Runner already active.');
+    return;
+  }
   pushLog(`Start requested: ${JSON.stringify(config)}`);
-  pushLog('TODO: runner not wired yet.');
+  const controller = new AbortController();
+  currentAbort = controller;
+
+  runCrawl(
+    {
+      startUrl: 'https://jobs.letsgetrusty.com/',
+      apiKey: config.apiKey,
+      model: config.model || 'openai/gpt-5.1-codex',
+      socks5Proxy: config.socksProxy,
+      llmProxy: config.llmProxy,
+      chromePath: config.chromePath,
+      maxPages: config.maxPages,
+      maxJobs: config.maxJobs,
+      headless: config.headless === '1'
+    },
+    (line) => pushLog(line),
+    { signal: controller.signal }
+  )
+    .then((outputPath) => {
+      pushLog(`Crawl done: ${outputPath}`);
+    })
+    .catch((err) => {
+      pushLog(`Crawl failed: ${err.message}`);
+    })
+    .finally(() => {
+      currentAbort = null;
+    });
 });
 
 ipcMain.on('stop-run', () => {
-  pushLog('Stop requested.');
+  if (currentAbort) {
+    currentAbort.abort();
+    pushLog('Stop requested.');
+  }
 });
 
 ipcMain.handle('pick-resume', async () => {

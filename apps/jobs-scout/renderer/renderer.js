@@ -13,9 +13,11 @@ const chatSendBtn = document.getElementById('chatSendBtn');
 const fields = {
   apiKey: document.getElementById('apiKey'),
   model: document.getElementById('model'),
-  proxy: document.getElementById('proxy'),
+  socksProxy: document.getElementById('socksProxy'),
+  llmProxy: document.getElementById('llmProxy'),
   chromePath: document.getElementById('chromePath'),
   maxPages: document.getElementById('maxPages'),
+  maxJobs: document.getElementById('maxJobs'),
   headless: document.getElementById('headless')
 };
 
@@ -40,9 +42,11 @@ startBtn.addEventListener('click', () => {
   window.jobsApi.startRun({
     apiKey: fields.apiKey.value,
     model: fields.model.value,
-    proxy: fields.proxy.value,
+    socksProxy: fields.socksProxy.value,
+    llmProxy: fields.llmProxy.value,
     chromePath: fields.chromePath.value,
     maxPages: fields.maxPages.value,
+    maxJobs: fields.maxJobs.value,
     headless: fields.headless.value
   });
 });

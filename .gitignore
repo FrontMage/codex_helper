@@ -15,3 +15,5 @@ npminstall-debug.log
 .beads/.gitignore
 .beads/README.md
 .beads/config.yaml
+apps/jobs-scout/data/
+apps/jobs-scout/dist/
