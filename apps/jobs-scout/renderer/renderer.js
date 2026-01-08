@@ -19,7 +19,8 @@ const fields = {
   chromePath: document.getElementById('chromePath'),
   maxPages: document.getElementById('maxPages'),
   maxJobs: document.getElementById('maxJobs'),
-  headless: document.getElementById('headless')
+  headless: document.getElementById('headless'),
+  useCache: document.getElementById('useCache')
 };
 
 function appendLog(line) {
@@ -48,7 +49,8 @@ startBtn.addEventListener('click', () => {
     chromePath: fields.chromePath.value,
     maxPages: fields.maxPages.value,
     maxJobs: fields.maxJobs.value,
-    headless: fields.headless.value
+    headless: fields.headless.value,
+    useCache: fields.useCache.checked ? '1' : '0'
   });
 });
 

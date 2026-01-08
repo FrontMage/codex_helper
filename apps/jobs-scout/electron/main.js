@@ -63,6 +63,7 @@ ipcMain.on('start-run', (_event, config) => {
       chromePath: config.chromePath,
       maxPages: config.maxPages,
       maxJobs: config.maxJobs,
+      useCache: config.useCache === '1',
       headless: config.headless === '1'
     },
     (line) => pushLog(line),

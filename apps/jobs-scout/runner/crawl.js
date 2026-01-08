@@ -199,7 +199,13 @@ async function callExtractLLM({ apiKey, model, llmProxy, jobUrl, applyUrl, html 
     },
     prompt
   ];
-  const raw = await callOpenRouter({ apiKey, model, messages, proxy: llmProxy });
+  const raw = await callOpenRouter({
+    apiKey,
+    model,
+    messages,
+    proxy: llmProxy,
+    maxTokens: 1400
+  });
   const parsed = extractJson(raw);
   if (!parsed) {
     throw new Error('LLM returned invalid JSON');
@@ -215,11 +221,30 @@ export async function runCrawl(config, log, { signal } = {}) {
   const maxJobs = Number.parseInt(config.maxJobs || '0', 10);
   const navTimeoutMs = Number.parseInt(config.navTimeoutMs || '90000', 10);
   const maxNavRetries = Number.parseInt(config.maxNavRetries || '2', 10);
+  const useCache = config.useCache === true || config.useCache === '1' || config.useCache === 1;
 
   let browser;
   const userDataDir = config.userDataDir || path.join(dataDir, 'chrome-profile');
+  const cachedJobs = new Set();
 
   try {
+    if (useCache && fs.existsSync(outputPath)) {
+      const lines = fs.readFileSync(outputPath, 'utf8').split(/\r?\n/).filter(Boolean);
+      for (const line of lines) {
+        try {
+          const item = JSON.parse(line);
+          if (item.jobUrl) cachedJobs.add(item.jobUrl);
+          if (item.applyUrl) cachedJobs.add(item.applyUrl);
+        } catch {
+          // ignore malformed cache lines
+        }
+      }
+      logLine(log, `cache enabled: ${cachedJobs.size} entries`);
+    } else if (!useCache) {
+      fs.writeFileSync(outputPath, '');
+      logLine(log, 'cache disabled: reset output file');
+    }
+
     if (config.browserUrl) {
       logLine(log, `connect to existing chrome: ${config.browserUrl}`);
       browser = await puppeteer.connect({ browserURL: config.browserUrl });
@@ -290,12 +315,16 @@ export async function runCrawl(config, log, { signal } = {}) {
     logLine(log, `unique jobs=${allJobs.length}`);
 
     let processed = 0;
-    for (const [jobUrl, item] of allJobs) {
-      if (signal?.aborted) throw new Error('Cancelled');
-      if (maxJobs > 0 && processed >= maxJobs) break;
-      processed += 1;
+      for (const [jobUrl, item] of allJobs) {
+        if (signal?.aborted) throw new Error('Cancelled');
+        if (maxJobs > 0 && processed >= maxJobs) break;
+        if (useCache && cachedJobs.has(jobUrl)) {
+          logLine(log, `cache hit: ${jobUrl}`);
+          continue;
+        }
+        processed += 1;
 
-      logLine(log, `[${processed}/${maxJobs || allJobs.length}] job: ${item.title || 'untitled'}`);
+        logLine(log, `[${processed}/${maxJobs || allJobs.length}] job: ${item.title || 'untitled'}`);
       const jobOk = await gotoWithRetry(page, jobUrl, {
         waitUntil: 'domcontentloaded',
         timeoutMs: navTimeoutMs,
@@ -319,7 +348,13 @@ export async function runCrawl(config, log, { signal } = {}) {
           reason: 'apply link not found'
         };
         fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
+        cachedJobs.add(jobUrl);
         logLine(log, `apply link missing: ${jobUrl}`);
+        continue;
+      }
+
+      if (useCache && cachedJobs.has(applyUrl)) {
+        logLine(log, `cache hit: ${applyUrl}`);
         continue;
       }
 
@@ -341,6 +376,8 @@ export async function runCrawl(config, log, { signal } = {}) {
             reason: 'apply page navigation failed'
           };
           fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
+          cachedJobs.add(jobUrl);
+          cachedJobs.add(applyUrl);
           logLine(log, `apply page failed: ${applyUrl}`);
           continue;
         }
@@ -375,6 +412,8 @@ export async function runCrawl(config, log, { signal } = {}) {
           closedReason: extracted?.closedReason || ''
         };
         fs.appendFileSync(outputPath, JSON.stringify(record) + '\n');
+        cachedJobs.add(jobUrl);
+        cachedJobs.add(applyUrl);
         logLine(log, `saved: ${record.title || 'untitled'}`);
       } finally {
         await applyPage.close();

@@ -7,6 +7,7 @@ const OPENROUTER_REFERER =
   process.env.OPENROUTER_REFERER || 'https://github.com/FrontMage/codex_helper';
 const OPENROUTER_TITLE = process.env.OPENROUTER_TITLE || 'Jobs Scout';
 const OPENROUTER_API_KEY_PATH = process.env.OPENROUTER_API_KEY_PATH || '';
+const DEFAULT_MAX_TOKENS = Number.parseInt(process.env.OPENROUTER_MAX_TOKENS || '2048', 10);
 
 function resolveProxy(proxy) {
   if (proxy) return proxy;
@@ -41,7 +42,14 @@ export function createDispatcher(proxy) {
   return new ProxyAgent(proxy);
 }
 
-export async function callOpenRouter({ apiKey, model, messages, proxy, timeoutMs = 60000 }) {
+export async function callOpenRouter({
+  apiKey,
+  model,
+  messages,
+  proxy,
+  timeoutMs = 60000,
+  maxTokens
+}) {
   const resolvedKey = loadApiKey(apiKey);
   if (!resolvedKey) throw new Error('Missing OpenRouter API key.');
   const resolvedProxy = resolveProxy(proxy);
@@ -55,6 +63,10 @@ export async function callOpenRouter({ apiKey, model, messages, proxy, timeoutMs
     messages,
     temperature: 0.2
   };
+  const tokenLimit = Number.isFinite(maxTokens) ? maxTokens : DEFAULT_MAX_TOKENS;
+  if (Number.isFinite(tokenLimit) && tokenLimit > 0) {
+    body.max_tokens = tokenLimit;
+  }
 
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',

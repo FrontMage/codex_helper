@@ -79,7 +79,13 @@ export async function recommendJobs({
     }
   ];
 
-  const raw = await callOpenRouter({ apiKey, model, messages, proxy: llmProxy });
+  const raw = await callOpenRouter({
+    apiKey,
+    model,
+    messages,
+    proxy: llmProxy,
+    maxTokens: 1800
+  });
   const parsed = extractJson(raw);
   if (!parsed) {
     return { raw, recommendations: [], excluded: [], needsConfirmation: [], summary: '' };
