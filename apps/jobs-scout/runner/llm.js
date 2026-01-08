@@ -1,6 +1,37 @@
 import { fetch, ProxyAgent } from 'undici';
+import fs from 'node:fs';
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+const OPENROUTER_URL = `${OPENROUTER_BASE_URL}/chat/completions`;
+const OPENROUTER_REFERER =
+  process.env.OPENROUTER_REFERER || 'https://github.com/FrontMage/codex_helper';
+const OPENROUTER_TITLE = process.env.OPENROUTER_TITLE || 'Jobs Scout';
+const OPENROUTER_API_KEY_PATH = process.env.OPENROUTER_API_KEY_PATH || '';
+
+function resolveProxy(proxy) {
+  if (proxy) return proxy;
+  return (
+    process.env.OPENROUTER_PROXY ||
+    process.env.OPENAI_PROXY ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    ''
+  );
+}
+
+function loadApiKey(explicit) {
+  if (explicit) return explicit.trim();
+  if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY.trim();
+  if (!OPENROUTER_API_KEY_PATH) return '';
+  const raw = fs.readFileSync(OPENROUTER_API_KEY_PATH, 'utf8');
+  const cleaned = raw
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return cleaned[0] || '';
+}
 
 export function createDispatcher(proxy) {
   if (!proxy) return undefined;
@@ -11,8 +42,10 @@ export function createDispatcher(proxy) {
 }
 
 export async function callOpenRouter({ apiKey, model, messages, proxy, timeoutMs = 60000 }) {
-  if (!apiKey) throw new Error('Missing OpenRouter API key.');
-  const dispatcher = createDispatcher(proxy);
+  const resolvedKey = loadApiKey(apiKey);
+  if (!resolvedKey) throw new Error('Missing OpenRouter API key.');
+  const resolvedProxy = resolveProxy(proxy);
+  const dispatcher = createDispatcher(resolvedProxy);
   if (dispatcher === null) {
     throw new Error('SOCKS5 proxy not supported for LLM; use HTTP/HTTPS proxy.');
   }
@@ -26,10 +59,10 @@ export async function callOpenRouter({ apiKey, model, messages, proxy, timeoutMs
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${resolvedKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/FrontMage/codex_helper',
-      'X-Title': 'Jobs Scout'
+      ...(OPENROUTER_REFERER ? { 'HTTP-Referer': OPENROUTER_REFERER } : {}),
+      ...(OPENROUTER_TITLE ? { 'X-Title': OPENROUTER_TITLE } : {})
     },
     body: JSON.stringify(body),
     dispatcher,
